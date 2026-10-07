@@ -1,0 +1,28 @@
+{
+  "name": "bookease-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "dev:api": "npm --workspace=apps/api run dev",
+    "dev:web": "npm --workspace=apps/web run dev",
+    "dev": "concurrently \"npm run dev:api\" \"npm run dev:web\"",
+    "build:api": "npm --workspace=apps/api run build",
+    "build:web": "npm --workspace=apps/web run build",
+    "build": "npm --workspace=apps/api run build && npm --workspace=apps/web run build",
+    "test:api": "npm --workspace=apps/api run test",
+    "test:web": "npm --workspace=apps/web run test",
+    "test": "npm --workspace=apps/api run test",
+    "db:push": "npm --workspace=apps/api run db:push",
+    "db:generate": "npm --workspace=apps/api run db:generate",
+    "db:seed": "npm --workspace=apps/api run db:seed"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  },
+  "dependencies": {
+    "caniuse-lite": "^1.0.30001814"
+  }
+}

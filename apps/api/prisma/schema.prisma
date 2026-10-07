@@ -1,0 +1,225 @@
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Tenant {
+  id                String            @id @default(uuid())
+  slug              String            @unique
+  name              String
+  logoUrl           String?
+  timezone          String            @default("UTC")
+  currency          String            @default("USD")
+  cancelPolicyHours Int               @default(24)
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  users             User[]
+  services          Service[]
+  staff             Staff[]
+  customers         Customer[]
+  bookings          Booking[]
+  payments          Payment[]
+  invoices          Invoice[]
+  notifications     NotificationLog[]
+  auditLogs         AuditLog[]
+}
+
+model User {
+  id           String    @id @default(uuid())
+  tenantId     String
+  tenant       Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  email        String    @unique
+  passwordHash String
+  firstName    String
+  lastName     String
+  role         String    @default("CUSTOMER") // OWNER, STAFF, CUSTOMER
+  refreshToken String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  staffProfile Staff?
+  bookings     Booking[]
+
+  @@index([tenantId])
+}
+
+model Service {
+  id              String         @id @default(uuid())
+  tenantId        String
+  tenant          Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name            String
+  description     String?
+  durationMinutes Int
+  price           Float
+  depositAmount   Float
+  bufferMinutes   Int            @default(0)
+  isActive        Boolean        @default(true)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  staffServices   StaffService[]
+  bookings        Booking[]
+
+  @@index([tenantId])
+}
+
+model Staff {
+  id            String         @id @default(uuid())
+  tenantId      String
+  tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  userId        String         @unique
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bio           String?
+  avatarUrl     String?
+  isActive      Boolean        @default(true)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  staffServices StaffService[]
+  workingHours  WorkingHours[]
+  timeOff       TimeOff[]
+  bookings      Booking[]
+
+  @@index([tenantId])
+}
+
+model StaffService {
+  staffId   String
+  serviceId String
+  staff     Staff   @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  service   Service @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  @@id([staffId, serviceId])
+}
+
+model WorkingHours {
+  id        String   @id @default(uuid())
+  staffId   String
+  staff     Staff    @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  dayOfWeek Int      // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
+  startTime String   // "09:00"
+  endTime   String   // "17:00"
+  isOff     Boolean  @default(false)
+
+  @@unique([staffId, dayOfWeek])
+}
+
+model TimeOff {
+  id        String   @id @default(uuid())
+  staffId   String
+  staff     Staff    @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  startDate DateTime
+  endDate   DateTime
+  reason    String?
+
+  @@index([staffId])
+}
+
+model Customer {
+  id        String    @id @default(uuid())
+  tenantId  String
+  tenant    Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  email     String
+  name      String
+  phone     String?
+  createdAt DateTime  @default(now())
+
+  bookings  Booking[]
+
+  @@unique([tenantId, email])
+  @@index([tenantId])
+}
+
+model Booking {
+  id             String            @id @default(uuid())
+  tenantId       String
+  tenant         Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  serviceId      String
+  service        Service           @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  staffId        String
+  staff          Staff             @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  customerId     String
+  customer       Customer          @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  userId         String?
+  user           User?             @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  startTime      DateTime
+  endTime        DateTime
+  status         String            @default("PENDING_PAYMENT") // PENDING_PAYMENT, CONFIRMED, COMPLETED, CANCELLED, NO_SHOW
+  notes          String?
+  totalAmount    Float
+  depositAmount  Float
+  idempotencyKey String?           @unique
+
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  payment        Payment?
+  invoice        Invoice?
+  notifications  NotificationLog[]
+
+  @@index([tenantId, staffId, startTime, endTime])
+  @@index([tenantId, status])
+}
+
+model Payment {
+  id           String   @id @default(uuid())
+  tenantId     String
+  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  bookingId    String   @unique
+  booking      Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  provider     String   // "STRIPE"
+  providerTxId String?
+  amount       Float
+  currency     String   @default("USD")
+  status       String   @default("PENDING") // PENDING, PAID, REFUNDED, FAILED
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([tenantId])
+}
+
+model Invoice {
+  id            String   @id @default(uuid())
+  tenantId      String
+  tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  bookingId     String   @unique
+  booking       Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  invoiceNumber String   @unique
+  pdfPath       String?
+  issuedAt      DateTime @default(now())
+
+  @@index([tenantId])
+}
+
+model NotificationLog {
+  id        String   @id @default(uuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  bookingId String
+  booking   Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  type      String   // REMINDER_24H, REMINDER_2H, CONFIRMATION, FOLLOW_UP
+  channel   String   // EMAIL, SMS
+  recipient String
+  status    String   // SENT, FAILED
+  sentAt    DateTime @default(now())
+
+  @@index([tenantId, bookingId])
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  actorId   String?
+  action    String
+  details   String?  // JSON string
+  createdAt DateTime @default(now())
+
+  @@index([tenantId])
+}
